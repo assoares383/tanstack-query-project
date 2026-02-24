@@ -24,6 +24,9 @@ describe('CreatePostForm', () => {
     expect(wrapper.emitted('update-user-id')?.[0]).toEqual([2])
     expect(wrapper.emitted('update-title')?.[0]).toEqual(['Novo título'])
     expect(wrapper.emitted('update-body')?.[0]).toEqual(['Novo conteúdo'])
+
+    await inputs[0].setValue('')
+    expect(wrapper.emitted('update-user-id')?.[1]).toEqual([1])
   })
 
   it('disables submit when pending and can emit after enabling', async () => {

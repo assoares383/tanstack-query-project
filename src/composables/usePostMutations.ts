@@ -14,9 +14,25 @@ type UsePostMutationsParams = {
 export function usePostMutations(params: UsePostMutationsParams) {
   const queryClient = useQueryClient()
 
+  async function invalidatePostQueries(options?: { postId?: number }) {
+    await queryClient.invalidateQueries({ queryKey: ['posts'] })
+
+    if (options?.postId !== undefined) {
+      await queryClient.invalidateQueries({ queryKey: ['post', options.postId], exact: true })
+    }
+  }
+
+  async function safeInvalidatePostQueries(options?: { postId?: number }) {
+    try {
+      await invalidatePostQueries(options)
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
   const createPostMutation = useMutation({
     mutationFn: createPost,
-    onSuccess: (createdPost) => {
+    onSuccess: async (createdPost) => {
       queryClient.setQueryData(params.postsQueryKey.value, (oldData: PostsPage | undefined) => {
         if (!oldData) {
           return oldData
@@ -42,13 +58,15 @@ export function usePostMutations(params: UsePostMutationsParams) {
         }
       })
 
+      await safeInvalidatePostQueries()
+
       params.onCreateSuccess?.()
     },
   })
 
   const updatePostMutation = useMutation({
     mutationFn: updatePost,
-    onSuccess: (updatedPost) => {
+    onSuccess: async (updatedPost) => {
       queryClient.setQueryData(params.postsQueryKey.value, (oldData: PostsPage | undefined) => {
         if (!oldData) {
           return oldData
@@ -60,13 +78,17 @@ export function usePostMutations(params: UsePostMutationsParams) {
         }
       })
 
+      queryClient.setQueryData(['post', updatedPost.id], updatedPost)
+
+      await safeInvalidatePostQueries({ postId: updatedPost.id })
+
       params.onUpdateSuccess?.()
     },
   })
 
   const deletePostMutation = useMutation({
     mutationFn: removePost,
-    onSuccess: (_, deletedId) => {
+    onSuccess: async (_, deletedId) => {
       queryClient.setQueryData(params.postsQueryKey.value, (oldData: PostsPage | undefined) => {
         if (!oldData) {
           return oldData
@@ -78,6 +100,10 @@ export function usePostMutations(params: UsePostMutationsParams) {
           total: Math.max(oldData.total - 1, 0),
         }
       })
+
+      queryClient.removeQueries({ queryKey: ['post', deletedId] })
+
+      await safeInvalidatePostQueries()
     },
   })
 

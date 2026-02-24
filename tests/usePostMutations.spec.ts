@@ -3,10 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PostsPage } from '../src/types/post'
 
 const setQueryDataMock = vi.fn()
+const invalidateQueriesMock = vi.fn()
+const removeQueriesMock = vi.fn()
 const mutationConfigs: Array<{ onSuccess?: (...args: any[]) => void }> = []
 
 vi.mock('@tanstack/vue-query', () => ({
-  useQueryClient: () => ({ setQueryData: setQueryDataMock }),
+  useQueryClient: () => ({
+    setQueryData: setQueryDataMock,
+    invalidateQueries: invalidateQueriesMock,
+    removeQueries: removeQueriesMock,
+  }),
   useMutation: (config: { onSuccess?: (...args: any[]) => void }) => {
     mutationConfigs.push(config)
     return { mutate: vi.fn(), isPending: ref(false), isError: ref(false), isSuccess: ref(false), error: ref(null) }
@@ -16,6 +22,9 @@ vi.mock('@tanstack/vue-query', () => ({
 describe('usePostMutations', () => {
   beforeEach(() => {
     setQueryDataMock.mockReset()
+    invalidateQueriesMock.mockReset()
+    removeQueriesMock.mockReset()
+    invalidateQueriesMock.mockResolvedValue(undefined)
     mutationConfigs.length = 0
   })
 
@@ -35,7 +44,7 @@ describe('usePostMutations', () => {
 
     const createConfig = mutationConfigs[0]
 
-    createConfig.onSuccess?.({ id: 9, userId: 1, title: 'Novo', body: 'Body' })
+    await createConfig.onSuccess?.({ id: 9, userId: 1, title: 'Novo', body: 'Body' })
 
     expect(setQueryDataMock).toHaveBeenCalledTimes(1)
 
@@ -49,6 +58,7 @@ describe('usePostMutations', () => {
 
     expect(updated?.items[0].id).toBe(9)
     expect(updated?.total).toBe(2)
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['posts'] })
     expect(onCreateSuccess).toHaveBeenCalledTimes(1)
     expect(onUpdateSuccess).not.toHaveBeenCalled()
   })
@@ -63,7 +73,7 @@ describe('usePostMutations', () => {
     })
 
     const createConfig = mutationConfigs[0]
-    createConfig.onSuccess?.({ id: 10, userId: 1, title: 'React', body: 'X' })
+    await createConfig.onSuccess?.({ id: 10, userId: 1, title: 'React', body: 'X' })
 
     const updater = setQueryDataMock.mock.calls[0][1] as (oldData: PostsPage | undefined) => PostsPage | undefined
     const updated = updater({
@@ -87,7 +97,7 @@ describe('usePostMutations', () => {
     })
 
     const createConfig = mutationConfigs[0]
-    createConfig.onSuccess?.({ id: 10, userId: 1, title: 'React', body: 'X' })
+    await createConfig.onSuccess?.({ id: 10, userId: 1, title: 'React', body: 'X' })
 
     const updater = setQueryDataMock.mock.calls[0][1] as (oldData: PostsPage | undefined) => PostsPage | undefined
     const updated = updater({
@@ -113,7 +123,7 @@ describe('usePostMutations', () => {
     })
 
     const updateConfig = mutationConfigs[1]
-    updateConfig.onSuccess?.({ id: 1, userId: 1, title: 'Editado', body: 'Body2' })
+    await updateConfig.onSuccess?.({ id: 1, userId: 1, title: 'Editado', body: 'Body2' })
 
     const updater = setQueryDataMock.mock.calls[0][1] as (oldData: PostsPage | undefined) => PostsPage | undefined
     const updated = updater({
@@ -124,6 +134,14 @@ describe('usePostMutations', () => {
     })
 
     expect(updated?.items[0].title).toBe('Editado')
+    expect(setQueryDataMock).toHaveBeenCalledWith(['post', 1], {
+      id: 1,
+      userId: 1,
+      title: 'Editado',
+      body: 'Body2',
+    })
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['posts'] })
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['post', 1], exact: true })
     expect(onUpdateSuccess).toHaveBeenCalledTimes(1)
   })
 
@@ -137,7 +155,7 @@ describe('usePostMutations', () => {
     })
 
     const deleteConfig = mutationConfigs[2]
-    deleteConfig.onSuccess?.(undefined, 2)
+    await deleteConfig.onSuccess?.(undefined, 2)
 
     const updater = setQueryDataMock.mock.calls[0][1] as (oldData: PostsPage | undefined) => PostsPage | undefined
     const updated = updater({
@@ -153,6 +171,36 @@ describe('usePostMutations', () => {
     expect(updated?.items).toHaveLength(1)
     expect(updated?.items[0].id).toBe(1)
     expect(updated?.total).toBe(1)
+    expect(removeQueriesMock).toHaveBeenCalledWith({ queryKey: ['post', 2] })
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['posts'] })
+  })
+
+  it('should keep mutation flow successful even when invalidation fails', async () => {
+    const onCreateSuccess = vi.fn()
+    const onUpdateSuccess = vi.fn()
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    invalidateQueriesMock.mockRejectedValueOnce(new Error('invalidate failed'))
+    invalidateQueriesMock.mockRejectedValueOnce(new Error('invalidate failed'))
+
+    const { usePostMutations } = await import('../src/composables/usePostMutations')
+
+    usePostMutations({
+      postsQueryKey: ref(['posts']),
+      appliedTitleFilter: ref(''),
+      appliedUserIdFilter: ref(undefined),
+      onCreateSuccess,
+      onUpdateSuccess,
+    })
+
+    await expect(mutationConfigs[0].onSuccess?.({ id: 1, userId: 1, title: 'A', body: 'B' })).resolves.toBeUndefined()
+
+    await expect(mutationConfigs[1].onSuccess?.({ id: 1, userId: 1, title: 'A', body: 'B' })).resolves.toBeUndefined()
+
+    expect(onCreateSuccess).toHaveBeenCalledTimes(1)
+    expect(onUpdateSuccess).toHaveBeenCalledTimes(1)
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(2)
+
+    consoleErrorSpy.mockRestore()
   })
 
   it('should update item without callback configured', async () => {
@@ -165,7 +213,7 @@ describe('usePostMutations', () => {
     })
 
     const updateConfig = mutationConfigs[1]
-    updateConfig.onSuccess?.({ id: 2, userId: 1, title: 'X', body: 'Y' })
+    await updateConfig.onSuccess?.({ id: 2, userId: 1, title: 'X', body: 'Y' })
 
     const updater = setQueryDataMock.mock.calls[0][1] as (oldData: PostsPage | undefined) => PostsPage | undefined
     const updated = updater({
@@ -187,13 +235,16 @@ describe('usePostMutations', () => {
       appliedUserIdFilter: ref(undefined),
     })
 
-    mutationConfigs[0].onSuccess?.({ id: 3, userId: 1, title: 'A', body: 'B' })
-    mutationConfigs[1].onSuccess?.({ id: 3, userId: 1, title: 'A', body: 'B' })
-    mutationConfigs[2].onSuccess?.(undefined, 3)
+    await mutationConfigs[0].onSuccess?.({ id: 3, userId: 1, title: 'A', body: 'B' })
+    await mutationConfigs[1].onSuccess?.({ id: 3, userId: 1, title: 'A', body: 'B' })
+    await mutationConfigs[2].onSuccess?.(undefined, 3)
 
     for (const call of setQueryDataMock.mock.calls) {
-      const updater = call[1] as (oldData: PostsPage | undefined) => PostsPage | undefined
-      expect(updater(undefined)).toBeUndefined()
+      const updater = call[1]
+
+      if (typeof updater === 'function') {
+        expect((updater as (oldData: PostsPage | undefined) => PostsPage | undefined)(undefined)).toBeUndefined()
+      }
     }
   })
 })

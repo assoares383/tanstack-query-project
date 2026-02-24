@@ -16,7 +16,9 @@ const emit = defineEmits<{
 
 function handleUserIdInput(event: Event) {
   const target = event.target as HTMLInputElement
-  emit('update-user-id', Number(target.value))
+  const parsedValue = Number(target.value)
+  const normalizedValue = Number.isFinite(parsedValue) && parsedValue >= 1 ? parsedValue : 1
+  emit('update-user-id', normalizedValue)
 }
 
 function handleTitleInput(event: Event) {
