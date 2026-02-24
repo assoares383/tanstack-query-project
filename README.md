@@ -1,5 +1,9 @@
 # TanStack Query com Vue 3 + Vite
 
+<p align="center">
+	<img src="https://miro.medium.com/1*PpLe5jXUvSY_GdiJt6mMAA.png" alt="TanStack Query" width="700" />
+</p>
+
 Projeto base em Vue 3 + TypeScript com Vite, configurado com `@tanstack/vue-query`.
 
 ## Requisitos
