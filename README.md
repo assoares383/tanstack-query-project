@@ -21,6 +21,16 @@ npm run build
 npm run preview
 ```
 
+## Testes
+
+```bash
+npm run test
+npm run test:watch
+npm run coverage
+```
+
+O projeto está configurado com Vitest + coverage V8 e limiar mínimo global de 90%.
+
 ## O que foi implementado
 
 - Configuração do `QueryClient` no `src/main.ts`
@@ -32,14 +42,23 @@ npm run preview
 - Paginação com `_page` e `_limit`
 - Atualização de cache local com `queryClient.setQueryData`
 - Devtools habilitado em desenvolvimento com `@tanstack/vue-query-devtools`
+- Tailwind CSS configurado com tema customizado (cores e sombras)
+- Vitest configurado com `jsdom`, setup de testes e relatórios de coverage
 
 ## Arquivos principais
 
 - `src/main.ts`: registra o `VueQueryPlugin` e configura opções padrão das queries
-- `src/App.vue`: tela de CRUD, filtros, paginação e estados da query
+- `src/App.vue`: camada de apresentação (UI + eventos)
+- `src/components/CreatePostForm.vue`: formulário de criação de posts
+- `src/components/EditPostForm.vue`: formulário de edição de posts
+- `src/composables/usePostsQuery.ts`: query de listagem + filtros + paginação
+- `src/composables/usePostMutations.ts`: mutations de create/update/delete e atualização de cache
 - `src/services/posts.ts`: camada de API para listar/criar/editar/remover posts
 - `src/types/post.ts`: tipos de domínio (`Post`, payloads e resposta paginada)
 - `docs/tanstack-query-vue.md`: documentação explicando os conceitos e fluxo
+- `tailwind.config.cjs`: tema do Tailwind
+- `vite.config.ts`: configuração do Vitest e coverage
+- `tests/`: testes unitários de services, composables e componentes
 
 ## API usada no exemplo
 

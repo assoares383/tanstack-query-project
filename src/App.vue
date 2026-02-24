@@ -1,20 +1,32 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { VueQueryDevtools } from '@tanstack/vue-query-devtools'
-import { createPost, getPosts, removePost, updatePost } from './services/posts'
-import type { CreatePostInput, Post, PostsPage, UpdatePostInput } from './types/post'
+import CreatePostForm from './components/CreatePostForm.vue'
+import EditPostForm from './components/EditPostForm.vue'
+import { usePostMutations } from './composables/usePostMutations'
+import { usePostsQuery } from './composables/usePostsQuery'
+import type { CreatePostInput, Post, UpdatePostInput } from './types/post'
 
 const isDev = import.meta.env.DEV
 
-const queryClient = useQueryClient()
-const page = ref(1)
-const limit = ref(5)
-
-const titleFilterInput = ref('')
-const userIdFilterInput = ref<number | null>(null)
-const appliedTitleFilter = ref('')
-const appliedUserIdFilter = ref<number | undefined>(undefined)
+const {
+  page,
+  titleFilterInput,
+  userIdFilterInput,
+  appliedTitleFilter,
+  appliedUserIdFilter,
+  postsQueryKey,
+  postsQuery,
+  totalPages,
+  canGoPrevious,
+  canGoNext,
+  currentItems,
+  formattedLastUpdate,
+  handleApplyFilters,
+  handleClearFilters,
+  handlePreviousPage,
+  handleNextPage,
+} = usePostsQuery()
 
 const createForm = ref<CreatePostInput>({
   userId: 1,
@@ -29,94 +41,15 @@ const editForm = ref<Omit<UpdatePostInput, 'id'>>({
   body: '',
 })
 
-const postsQueryKey = computed(() => {
-  return [
-    'posts',
-    {
-      page: page.value,
-      limit: limit.value,
-      title: appliedTitleFilter.value,
-      userId: appliedUserIdFilter.value,
-    },
-  ] as const
-})
-
-const postsQuery = useQuery({
-  queryKey: postsQueryKey,
-  queryFn: () =>
-    getPosts({
-      page: page.value,
-      limit: limit.value,
-      title: appliedTitleFilter.value || undefined,
-      userId: appliedUserIdFilter.value,
-    }),
-  placeholderData: keepPreviousData,
-})
-
-const createPostMutation = useMutation({
-  mutationFn: createPost,
-  onSuccess: (createdPost) => {
-    queryClient.setQueryData(postsQueryKey.value, (oldData: PostsPage | undefined) => {
-      if (!oldData) {
-        return oldData
-      }
-
-      const shouldAddInCurrentPage =
-        oldData.page === 1 &&
-        (!appliedUserIdFilter.value || createdPost.userId === appliedUserIdFilter.value) &&
-        (!appliedTitleFilter.value ||
-          createdPost.title.toLowerCase().includes(appliedTitleFilter.value.toLowerCase()))
-
-      if (!shouldAddInCurrentPage) {
-        return {
-          ...oldData,
-          total: oldData.total + 1,
-        }
-      }
-
-      return {
-        ...oldData,
-        items: [createdPost, ...oldData.items].slice(0, oldData.limit),
-        total: oldData.total + 1,
-      }
-    })
-
+const { createPostMutation, updatePostMutation, deletePostMutation } = usePostMutations({
+  postsQueryKey,
+  appliedTitleFilter,
+  appliedUserIdFilter,
+  onCreateSuccess: () => {
     createForm.value = { userId: 1, title: '', body: '' }
   },
-})
-
-const updatePostMutation = useMutation({
-  mutationFn: updatePost,
-  onSuccess: (updatedPost) => {
-    queryClient.setQueryData(postsQueryKey.value, (oldData: PostsPage | undefined) => {
-      if (!oldData) {
-        return oldData
-      }
-
-      return {
-        ...oldData,
-        items: oldData.items.map((post) => (post.id === updatedPost.id ? updatedPost : post)),
-      }
-    })
-
+  onUpdateSuccess: () => {
     editingPostId.value = null
-  },
-})
-
-const deletePostMutation = useMutation({
-  mutationFn: removePost,
-  onSuccess: (_, deletedId) => {
-    queryClient.setQueryData(postsQueryKey.value, (oldData: PostsPage | undefined) => {
-      if (!oldData) {
-        return oldData
-      }
-
-      return {
-        ...oldData,
-        items: oldData.items.filter((post) => post.id !== deletedId),
-        total: Math.max(oldData.total - 1, 0),
-      }
-    })
   },
 })
 
@@ -128,48 +61,12 @@ const hasEditValues = computed(() => {
   return editForm.value.title.trim().length > 0 && editForm.value.body.trim().length > 0
 })
 
-const totalPages = computed(() => {
-  const total = postsQuery.data.value?.total ?? 0
-
-  return Math.max(1, Math.ceil(total / limit.value))
-})
-
-const canGoPrevious = computed(() => page.value > 1)
-const canGoNext = computed(() => page.value < totalPages.value)
-const currentItems = computed(() => postsQuery.data.value?.items ?? [])
-
 function handleCreatePost() {
   if (!hasFormValues.value) {
     return
   }
 
   createPostMutation.mutate(createForm.value)
-}
-
-function handleApplyFilters() {
-  appliedTitleFilter.value = titleFilterInput.value.trim()
-  appliedUserIdFilter.value = userIdFilterInput.value ?? undefined
-  page.value = 1
-}
-
-function handleClearFilters() {
-  titleFilterInput.value = ''
-  userIdFilterInput.value = null
-  appliedTitleFilter.value = ''
-  appliedUserIdFilter.value = undefined
-  page.value = 1
-}
-
-function handlePreviousPage() {
-  if (canGoPrevious.value) {
-    page.value -= 1
-  }
-}
-
-function handleNextPage() {
-  if (canGoNext.value) {
-    page.value += 1
-  }
 }
 
 function startEdit(post: Post) {
@@ -199,23 +96,15 @@ function handleUpdatePost(id: number) {
 function handleDeletePost(id: number) {
   deletePostMutation.mutate(id)
 }
-
-const formattedLastUpdate = computed(() => {
-  if (!postsQuery.dataUpdatedAt.value) {
-    return 'Ainda não atualizado'
-  }
-
-  return new Date(postsQuery.dataUpdatedAt.value).toLocaleTimeString('pt-BR')
-})
 </script>
 
 <template>
   <main class="container">
-    <h1>TanStack Query + Vue</h1>
+    <h1 class="mb-2 text-3xl font-bold">TanStack Query + Vue</h1>
     <p class="subtitle">Estrutura base com CRUD, filtros e paginação usando TanStack Query no Vue.</p>
 
     <section class="card">
-      <h2>1) Filtros e paginação</h2>
+      <h2 class="text-xl font-semibold">1) Filtros e paginação</h2>
 
       <div class="filters-grid">
         <input v-model="titleFilterInput" type="text" placeholder="Filtrar por título" />
@@ -223,7 +112,7 @@ const formattedLastUpdate = computed(() => {
       </div>
 
       <div class="row-actions">
-        <button @click="handleApplyFilters">Aplicar filtros</button>
+        <button class="bg-app-primary text-white hover:bg-app-primary-hover" @click="handleApplyFilters">Aplicar filtros</button>
         <button @click="handleClearFilters">Limpar filtros</button>
       </div>
 
@@ -235,7 +124,7 @@ const formattedLastUpdate = computed(() => {
     </section>
 
     <section class="card">
-      <h2>2) Listagem com query</h2>
+      <h2 class="text-xl font-semibold">2) Listagem com query</h2>
 
       <div class="status-grid">
         <span><strong>isLoading:</strong> {{ postsQuery.isLoading.value }}</span>
@@ -245,7 +134,7 @@ const formattedLastUpdate = computed(() => {
         <span><strong>total:</strong> {{ postsQuery.data.value?.total ?? 0 }}</span>
       </div>
 
-      <button @click="postsQuery.refetch()" :disabled="postsQuery.isFetching.value">
+      <button class="bg-app-primary text-white hover:bg-app-primary-hover" @click="postsQuery.refetch()" :disabled="postsQuery.isFetching.value">
         {{ postsQuery.isFetching.value ? 'Atualizando...' : 'Refetch manual' }}
       </button>
 
@@ -260,20 +149,21 @@ const formattedLastUpdate = computed(() => {
           </div>
 
           <template v-if="editingPostId === post.id">
-            <input v-model="editForm.title" type="text" placeholder="Título" />
-            <textarea v-model="editForm.body" rows="3" placeholder="Conteúdo"></textarea>
-
-            <div class="row-actions">
-              <button @click="handleUpdatePost(post.id)" :disabled="updatePostMutation.isPending.value || !hasEditValues">
-                {{ updatePostMutation.isPending.value ? 'Salvando...' : 'Salvar edição' }}
-              </button>
-              <button @click="cancelEdit">Cancelar</button>
-            </div>
+            <EditPostForm
+              :title="editForm.title"
+              :body="editForm.body"
+              :is-pending="updatePostMutation.isPending.value"
+              :can-submit="hasEditValues"
+              @update-title="editForm.title = $event"
+              @update-body="editForm.body = $event"
+              @submit="handleUpdatePost(post.id)"
+              @cancel="cancelEdit"
+            />
           </template>
 
           <template v-else>
-            <h3>{{ post.title }}</h3>
-            <p>{{ post.body }}</p>
+            <h3 class="text-base font-semibold">{{ post.title }}</h3>
+            <p class="text-sm text-app-muted">{{ post.body }}</p>
 
             <div class="row-actions">
               <button @click="startEdit(post)">Editar</button>
@@ -287,16 +177,20 @@ const formattedLastUpdate = computed(() => {
     </section>
 
     <section class="card">
-      <h2>3) Criação de post</h2>
+      <h2 class="text-xl font-semibold">3) Criação de post</h2>
       <p class="hint">Neste exemplo, create/update/delete atualizam o cache local da página atual.</p>
 
-      <input v-model.number="createForm.userId" type="number" min="1" placeholder="userId" />
-      <input v-model="createForm.title" type="text" placeholder="Título" />
-      <textarea v-model="createForm.body" rows="4" placeholder="Conteúdo"></textarea>
-
-      <button @click="handleCreatePost" :disabled="createPostMutation.isPending.value || !hasFormValues">
-        {{ createPostMutation.isPending.value ? 'Salvando...' : 'Criar post' }}
-      </button>
+      <CreatePostForm
+        :user-id="createForm.userId"
+        :title="createForm.title"
+        :body="createForm.body"
+        :is-pending="createPostMutation.isPending.value"
+        :can-submit="hasFormValues"
+        @update-user-id="createForm.userId = $event"
+        @update-title="createForm.title = $event"
+        @update-body="createForm.body = $event"
+        @submit="handleCreatePost"
+      />
 
       <p v-if="createPostMutation.isError.value" class="error">
         {{ createPostMutation.error.value?.message }}

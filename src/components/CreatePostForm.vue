@@ -39,7 +39,7 @@ function handleSubmit() {
   <input :value="props.title" type="text" placeholder="Título" @input="handleTitleInput" />
   <textarea :value="props.body" rows="4" placeholder="Conteúdo" @input="handleBodyInput"></textarea>
 
-  <button @click="handleSubmit" :disabled="props.isPending || !props.canSubmit">
+  <button class="bg-app-primary text-white hover:bg-app-primary-hover" @click="handleSubmit" :disabled="props.isPending || !props.canSubmit">
     {{ props.isPending ? 'Salvando...' : 'Criar post' }}
   </button>
 </template>

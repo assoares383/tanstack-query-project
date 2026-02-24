@@ -29,9 +29,9 @@ function handleBodyInput(event: Event) {
   <textarea :value="props.body" rows="3" placeholder="Conteúdo" @input="handleBodyInput"></textarea>
 
   <div class="row-actions">
-    <button @click="emit('submit')" :disabled="props.isPending || !props.canSubmit">
+    <button class="bg-app-primary text-white hover:bg-app-primary-hover" @click="emit('submit')" :disabled="props.isPending || !props.canSubmit">
       {{ props.isPending ? 'Salvando...' : 'Salvar edição' }}
     </button>
-    <button @click="emit('cancel')">Cancelar</button>
+    <button class="border-app-danger text-app-danger hover:bg-red-50" @click="emit('cancel')">Cancelar</button>
   </div>
 </template>
